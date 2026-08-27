@@ -12,7 +12,8 @@ declared above automatically.
 Configuration, read from the environment:
   Repository location, taken from what the CI platform provides:
     GITHUB_REPOSITORY (owner/repo)   on GitHub Actions
-  Set it manually for a local preview.
+    CI_SERVER_HOST + CI_PROJECT_PATH on GitLab CI
+  Set one of them manually for a local preview.
 """
 
 import json
@@ -22,7 +23,7 @@ import shutil
 import warnings
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import List
+from typing import List, Literal
 
 import yaml
 
@@ -55,6 +56,7 @@ class Repo:
 
     host: str
     slug: str
+    platform: Literal["github", "gitlab"]
 
     @property
     def url(self) -> str:
@@ -62,19 +64,28 @@ class Repo:
 
     @property
     def tree_base(self) -> str:
-        return f"{self.url}/tree/main"
+        return (
+            f"{self.url}/-/tree/main"
+            if self.platform == "gitlab"
+            else f"{self.url}/tree/main"
+        )
 
 
 def resolve_repo() -> Repo:
     if os.environ.get("GITHUB_REPOSITORY"):
-        return Repo(host="github.com", slug=os.environ["GITHUB_REPOSITORY"])
+        return Repo(
+            host="github.com", slug=os.environ["GITHUB_REPOSITORY"], platform="github"
+        )
+    if os.environ.get("CI_PROJECT_PATH"):
+        host = os.environ.get("CI_SERVER_HOST", "gitlab.com")
+        return Repo(host=host, slug=os.environ["CI_PROJECT_PATH"], platform="gitlab")
     warnings.warn(
-        "No repository configured: set GITHUB_REPOSITORY (owner/repo). "
-        "Building with the OWNER/REPO placeholder, so the install commands "
-        "and source links will not work.",
+        "No repository configured: set GITHUB_REPOSITORY (owner/repo) or "
+        "CI_PROJECT_PATH and CI_SERVER_HOST. Building with the OWNER/REPO "
+        "placeholder, so the install commands and source links will not work.",
         stacklevel=2,
     )
-    return Repo("github.com", "OWNER/REPO")
+    return Repo("github.com", "OWNER/REPO", "github")
 
 
 def find_skill_dirs(skills_root: Path) -> List[Path]:
@@ -102,7 +113,7 @@ def load_skill(skill_dir: Path, repo: Repo) -> Skill:
         name=str(attrs.get("name") or skill_dir.name),
         description=str(attrs.get("description") or ""),
         path=rel_path,
-        install=f"apm install {repo.slug} --skill {skill_dir.name}",
+        install=f"apm install {repo.slug if repo.platform == 'github' else repo.url} --skill {skill_dir.name}",
         source=f"{repo.tree_base}/{rel_path}",
     )
 
@@ -113,7 +124,7 @@ def build_site_data(repo: Repo) -> Site:
 
     return Site(
         repoUrl=repo.url,
-        installAll=f"apm install {repo.slug}",
+        installAll=f"apm install {repo.slug if repo.platform == 'github' else repo.url}",
         skills=skills,
     )
 
