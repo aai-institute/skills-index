@@ -104,13 +104,23 @@ def parse_frontmatter(text: str) -> dict:
 
 
 def load_skill(skill_dir: Path, repo: Repo) -> Skill:
-    """One skills.json entry, built from a skill directory's SKILL.md."""
-    attrs = parse_frontmatter((skill_dir / "SKILL.md").read_text(encoding="utf-8"))
+    """One skills.json entry, built from a skill directory's SKILL.md.
+
+    The Agent Skills specification requires `name` and `description` in the
+    frontmatter, so a SKILL.md without them fails the build."""
+
+    skill_md = skill_dir / "SKILL.md"
+    attrs = parse_frontmatter(skill_md.read_text(encoding="utf-8"))
+    missing = [field for field in ("name", "description") if not attrs.get(field)]
+    if missing:
+        raise ValueError(
+            f"{skill_md.relative_to(ROOT)}: skill is missing {' and '.join(missing)}"
+        )
     rel_path = skill_dir.relative_to(ROOT).as_posix()
 
     return Skill(
-        name=str(attrs.get("name") or skill_dir.name),
-        description=str(attrs.get("description") or ""),
+        name=str(attrs["name"]),
+        description=str(attrs["description"]),
         path=rel_path,
         install=f"apm install {repo.slug if repo.platform == 'github' else repo.url} --skill {skill_dir.name}",
         source=f"{repo.tree_base}/{rel_path}",
@@ -136,7 +146,10 @@ def write_output(site: Site) -> None:
 
 def main() -> None:
     repo = resolve_repo()
-    site = build_site_data(repo)
+    try:
+        site = build_site_data(repo)
+    except ValueError as err:
+        raise SystemExit(str(err)) from err
     write_output(site)
     print(f"Built _site with {len(site.skills)} skill(s) for {repo.url}")
 
