@@ -46,7 +46,6 @@ class Site:
     """Top-level shape of skills.json, consumed by site/index.html."""
 
     repoUrl: str
-    installAll: str
     skills: List[Skill]
 
 
@@ -124,7 +123,6 @@ def build_site_data(repo: Repo) -> Site:
 
     return Site(
         repoUrl=repo.url,
-        installAll=f"apm install {repo.slug if repo.platform == 'github' else repo.url}",
         skills=skills,
     )
 
