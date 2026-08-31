@@ -26,10 +26,6 @@ from typing import List, Literal
 
 import yaml
 
-ROOT = Path(__file__).resolve().parent.parent
-BUILD_DIR = ROOT / "_site"
-SKILLS_ROOT = ROOT / "skills"
-
 
 @dataclass
 class Skill:
@@ -95,7 +91,7 @@ def parse_frontmatter(text: str) -> dict:
     return attrs if isinstance(attrs, dict) else {}
 
 
-def load_skill(skill_dir: Path, repo: Repo) -> Skill:
+def load_skill(root: Path, skill_dir: Path, repo: Repo) -> Skill:
     """One skills.json entry, built from a skill directory's SKILL.md.
 
     The Agent Skills specification requires `name` and `description` in the
@@ -106,9 +102,9 @@ def load_skill(skill_dir: Path, repo: Repo) -> Skill:
     missing = [field for field in ("name", "description") if not attrs.get(field)]
     if missing:
         raise ValueError(
-            f"{skill_md.relative_to(ROOT)}: skill is missing {' and '.join(missing)}"
+            f"{skill_md.relative_to(root)}: skill is missing {' and '.join(missing)}"
         )
-    rel_path = skill_dir.relative_to(ROOT).as_posix()
+    rel_path = skill_dir.relative_to(root).as_posix()
 
     install_command = f"apm install {repo.host}/{repo.slug}/{rel_path}"
 
@@ -121,9 +117,11 @@ def load_skill(skill_dir: Path, repo: Repo) -> Skill:
     )
 
 
-def build_site_data(repo: Repo) -> Site:
-    skill_dirs = find_skill_dirs(SKILLS_ROOT)
-    skills = sorted((load_skill(d, repo) for d in skill_dirs), key=lambda s: s.name)
+def build_site_data(root: Path, repo: Repo, skills_root: Path) -> Site:
+    skill_dirs = find_skill_dirs(skills_root)
+    skills = sorted(
+        (load_skill(root, d, repo) for d in skill_dirs), key=lambda s: s.name
+    )
 
     return Site(
         repoUrl=repo.url,
@@ -131,20 +129,23 @@ def build_site_data(repo: Repo) -> Site:
     )
 
 
-def write_output(site: Site) -> None:
-    shutil.copytree(ROOT / "site", BUILD_DIR, dirs_exist_ok=True)
-    (BUILD_DIR / "skills.json").write_text(
+def write_output(root: Path, site: Site, build_dir: Path) -> None:
+    shutil.copytree(root / "site", build_dir, dirs_exist_ok=True)
+    (build_dir / "skills.json").write_text(
         json.dumps(asdict(site), indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
     )
 
 
 def main() -> None:
+    root = Path(__file__).resolve().parent.parent
+    build_dir = root / "_site"
+    skills_root = root / "skills"
     repo = resolve_repo()
     try:
-        site = build_site_data(repo)
+        site = build_site_data(root, repo, skills_root)
     except ValueError as err:
         raise SystemExit(str(err)) from err
-    write_output(site)
+    write_output(root, site, build_dir)
     print(f"Built _site with {len(site.skills)} skill(s) for {repo.url}")
 
 
