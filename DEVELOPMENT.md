@@ -21,7 +21,6 @@ set them yourself.
 | Variable | Function | Default |
 | --- | --- | --- |
 | `GITHUB_REPOSITORY` | GitHub Actions sets it. |
-| `CI_PROJECT_PATH` and `CI_SERVER_HOST` | GitLab CI sets it. |
 
 ## Run the build locally
 
@@ -29,9 +28,6 @@ set them yourself.
 GITHUB_REPOSITORY=<owner>/<repo> uv run scripts/build_site.py
 python3 -m http.server -d _site 8000
 ```
-
-Then open http://localhost:8000. For a GitLab preview, set `CI_PROJECT_PATH`
-and `CI_SERVER_HOST` in place of `GITHUB_REPOSITORY`.
 
 ## Releases
 

@@ -12,8 +12,7 @@ declared above automatically.
 Configuration, read from the environment:
   Repository location, taken from what the CI platform provides:
     GITHUB_REPOSITORY (owner/repo)   on GitHub Actions
-    CI_SERVER_HOST + CI_PROJECT_PATH on GitLab CI
-  Set one of them manually for a local preview.
+  Set it manually for a local preview.
 """
 
 import json
@@ -55,7 +54,7 @@ class Repo:
 
     host: str
     slug: str
-    platform: Literal["github", "gitlab"]
+    platform: Literal["github"]
 
     @property
     def url(self) -> str:
@@ -63,11 +62,7 @@ class Repo:
 
     @property
     def tree_base(self) -> str:
-        return (
-            f"{self.url}/-/tree/main"
-            if self.platform == "gitlab"
-            else f"{self.url}/tree/main"
-        )
+        return f"{self.url}/tree/main"
 
 
 def resolve_repo() -> Repo:
@@ -75,13 +70,10 @@ def resolve_repo() -> Repo:
         return Repo(
             host="github.com", slug=os.environ["GITHUB_REPOSITORY"], platform="github"
         )
-    if os.environ.get("CI_PROJECT_PATH"):
-        host = os.environ.get("CI_SERVER_HOST", "gitlab.com")
-        return Repo(host=host, slug=os.environ["CI_PROJECT_PATH"], platform="gitlab")
     warnings.warn(
-        "No repository configured: set GITHUB_REPOSITORY (owner/repo) or "
-        "CI_PROJECT_PATH and CI_SERVER_HOST. Building with the OWNER/REPO "
-        "placeholder, so the install commands and source links will not work.",
+        "No repository configured: set GITHUB_REPOSITORY (owner/repo). "
+        "Building with the OWNER/REPO placeholder, so the install commands "
+        "and source links will not work.",
         stacklevel=2,
     )
     return Repo("github.com", "OWNER/REPO", "github")
@@ -118,11 +110,13 @@ def load_skill(skill_dir: Path, repo: Repo) -> Skill:
         )
     rel_path = skill_dir.relative_to(ROOT).as_posix()
 
+    install_command = f"apm install {repo.host}/{repo.slug}/{rel_path}"
+
     return Skill(
         name=str(attrs["name"]),
         description=str(attrs["description"]),
         path=rel_path,
-        install=f"apm install {repo.slug if repo.platform == 'github' else repo.url} --skill {skill_dir.name}",
+        install=install_command,
         source=f"{repo.tree_base}/{rel_path}",
     )
 
