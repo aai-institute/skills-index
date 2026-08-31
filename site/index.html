@@ -77,7 +77,9 @@
         <span class="inline-flex max-w-full items-center gap-2.5 rounded-lg border border-white/10 bg-brand-navy py-1.5 pr-1.5 pl-3.5"><code
           class="overflow-x-auto font-mono text-[0.85rem] whitespace-pre text-brand-green [scrollbar-width:none]">curl -sSL https://aka.ms/apm-unix | sh</code><button data-copy>Copy</button></span>
       </div>
-      <p class="mt-4 text-sm text-brand-grey">Then install skills from the list below.</p>
+      <p class="mt-4 text-sm text-brand-grey">Then install skills from the list below. To add a skill, open a pull request with a new directory under
+        <code class="font-mono text-brand-lightgrey">skills/</code> to
+        <a id="repo-link" class="font-medium text-brand-green hover:underline" href="#">this repo</a>.</p>
     </section>
   </div>
 </header>
@@ -97,11 +99,6 @@
   <ul id="skills" class="grid list-none items-start gap-4"></ul>
   <p id="empty" hidden class="rounded-xl border border-dashed border-brand-grey p-10 text-center text-brand-blue dark:border-brand-grey/25 dark:text-brand-grey">No skills match your search.</p>
 
-  <footer class="mt-16 border-t border-brand-navy/10 pt-6 text-sm text-brand-blue dark:border-brand-grey/15 dark:text-brand-grey">
-    <p>To add a skill, open a pull request with a new directory under
-    <code id="skills-dir" class="font-mono">skills/</code>, to
-    <a id="repo-link" class="font-medium text-brand-indigo hover:underline dark:text-brand-green" href="#">this repo</a>.</p>
-  </footer>
 </main>
 
 <script>
