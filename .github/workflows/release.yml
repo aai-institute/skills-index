@@ -16,7 +16,7 @@ jobs:
         with:
           persist-credentials: false
       - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
-      - name: Build site
+      - name: Generate skills.json
         run: uv run scripts/build_site.py
       - name: Create release
         env:
@@ -24,7 +24,7 @@ jobs:
         run: |
           tag="main-$(git rev-parse --short HEAD)"
           gh release create "$tag" \
-            _site/skills.json \
-            _site/index.html \
+            site/skills.json \
+            site/index.html \
             --title "$tag" \
             --generate-notes

@@ -92,19 +92,16 @@ def test_build_site_data_builds_site_dataclass(fake_root):
     assert [s.name for s in site.skills] == ["demo1", "demo2"]
 
 
-def test_build_pipeline_writes_site_output(fake_root, monkeypatch):
+def test_build_pipeline_writes_skills_json(fake_root, monkeypatch):
     monkeypatch.setenv("GITHUB_REPOSITORY", "owner/repo")
-    (fake_root / "site").mkdir()
-    (fake_root / "site" / "index.html").write_text("<title>Skills</title>")
     create_skill(fake_root, "demo", "name: demo\ndescription: A demo.")
-    build_dir = fake_root / "_site"
+    out_file = fake_root / "skills.json"
 
     repo = resolve_repo()
     site = build_site.build_site_data(fake_root, repo, fake_root / "skills")
-    build_site.write_output(fake_root, site, build_dir)
+    build_site.write_skills_json(site, out_file)
 
-    assert (build_dir / "index.html").read_text() == "<title>Skills</title>"
-    data = json.loads((build_dir / "skills.json").read_text(encoding="utf-8"))
+    data = json.loads(out_file.read_text(encoding="utf-8"))
     assert data == {
         "repoUrl": "https://github.com/owner/repo",
         "skills": [

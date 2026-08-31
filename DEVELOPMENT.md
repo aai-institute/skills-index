@@ -24,9 +24,12 @@ set them yourself.
 
 ## Run the build locally
 
+The script generates `skills.json` into `site/`, which makes `site/` the
+complete deployable directory:
+
 ```sh
 GITHUB_REPOSITORY=<owner>/<repo> uv run scripts/build_site.py
-python3 -m http.server -d _site 8000
+python3 -m http.server -d site 8000
 ```
 
 ## Releases

@@ -3,8 +3,7 @@
 # requires-python = ">=3.9"
 # dependencies = ["pyyaml>=6"]
 # ///
-"""Builds the static site into _site/: copies site/ and generates skills.json
-from the SKILL.md files in the skills folder.
+"""Generates skills.json from the SKILL.md files in the skills folder.
 
 Run with `uv run scripts/build_site.py`; uv installs the dependencies
 declared above automatically.
@@ -18,7 +17,6 @@ Configuration, read from the environment:
 import json
 import os
 import re
-import shutil
 import warnings
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -129,24 +127,23 @@ def build_site_data(root: Path, repo: Repo, skills_root: Path) -> Site:
     )
 
 
-def write_output(root: Path, site: Site, build_dir: Path) -> None:
-    shutil.copytree(root / "site", build_dir, dirs_exist_ok=True)
-    (build_dir / "skills.json").write_text(
+def write_skills_json(site: Site, out_file: Path) -> None:
+    out_file.write_text(
         json.dumps(asdict(site), indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
     )
 
 
 def main() -> None:
     root = Path(__file__).resolve().parent.parent
-    build_dir = root / "_site"
     skills_root = root / "skills"
+    out_file = root / "site" / "skills.json"
     repo = resolve_repo()
     try:
         site = build_site_data(root, repo, skills_root)
     except ValueError as err:
         raise SystemExit(str(err)) from err
-    write_output(root, site, build_dir)
-    print(f"Built _site with {len(site.skills)} skill(s) for {repo.url}")
+    write_skills_json(site, out_file)
+    print(f"Wrote {out_file.name} with {len(site.skills)} skill(s) for {repo.url}")
 
 
 if __name__ == "__main__":
