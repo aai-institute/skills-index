@@ -12,8 +12,6 @@ and copy the installation command. The install commands use [APM](https://micros
 
 ## Notes
 
-- Keep the name of the skills folder `skills`. APM finds
-  the skills only in this folder when you install the full index.
 - `SKILL.md` that is in a subfolder of a different skill is skipped.
 - The skill must have a `name` and a `description`.
 
