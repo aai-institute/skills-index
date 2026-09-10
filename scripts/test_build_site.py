@@ -60,6 +60,66 @@ def test_parse_frontmatter_reads_name_and_description():
     assert attrs == {"name": "demo", "description": "A demo."}
 
 
+def test_parse_frontmatter_ignores_byte_order_mark():
+    attrs = parse_frontmatter("\ufeff---\nname: demo\n---\nBody.\n")
+    assert attrs == {"name": "demo"}
+
+
+@pytest.mark.parametrize(
+    "frontmatter",
+    [
+        "description: Use when: something happens",
+        "description: *emphasis* here",
+        "description: [WIP] thing",
+        "description: `code` first",
+        "description: 'unterminated",
+    ],
+)
+def test_parse_frontmatter_invalid_yaml_raises(frontmatter):
+    with pytest.raises(ValueError, match="invalid YAML in frontmatter") as info:
+        parse_frontmatter(f"---\n{frontmatter}\n---\n")
+    assert "wrap the value in double quotes" in str(info.value)
+
+
+@pytest.mark.parametrize(
+    "frontmatter, expected",
+    [
+        ('description: "Use when: quoted"', "Use when: quoted"),
+        ("description: Line one\n  line two.", "Line one line two."),
+        ("description: >\n  Line one\n  line two.", "Line one line two."),
+        ("description: it's fine", "it's fine"),
+    ],
+)
+def test_parse_frontmatter_accepts_common_authoring_styles(frontmatter, expected):
+    attrs = parse_frontmatter(f"---\nname: demo\n{frontmatter}\n---\n")
+    assert attrs["description"] == expected
+
+
+def test_load_skill_invalid_yaml_names_the_file(fake_root):
+    skill_dir = create_skill(fake_root, "demo", "description: Use when: it breaks")
+    with pytest.raises(ValueError, match=r"skills/demo/SKILL.md: invalid YAML"):
+        load_skill(fake_root, skill_dir, REPO)
+
+
+@pytest.mark.parametrize(
+    "frontmatter, expected_error",
+    [
+        (
+            "name: other\ndescription: d",
+            "name 'other' must match the directory name 'demo'",
+        ),
+        (
+            "name: Demo\ndescription: d",
+            "name 'Demo' must match the directory name 'demo'",
+        ),
+    ],
+)
+def test_load_skill_name_must_match_directory(fake_root, frontmatter, expected_error):
+    skill_dir = create_skill(fake_root, "demo", frontmatter)
+    with pytest.raises(ValueError, match=expected_error):
+        load_skill(fake_root, skill_dir, REPO)
+
+
 @pytest.mark.parametrize(
     "frontmatter, expected_error",
     [
