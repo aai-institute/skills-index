@@ -26,6 +26,9 @@ from build_site import (
 )
 
 REPO = Repo(host="github.com", slug="owner/repo", platform="github", branch="main")
+GITLAB_REPO = Repo(
+    host="gitlab.example.com", slug="group/sub/repo", platform="gitlab", branch="main"
+)
 
 
 @pytest.fixture
@@ -47,6 +50,21 @@ def create_skill(root: Path, name: str, frontmatter: str) -> Path:
 def test_repo_discovery(monkeypatch):
     monkeypatch.setenv("GITHUB_REPOSITORY", "owner/repo")
     assert resolve_repo() == REPO
+
+
+def test_repo_discovery_gitlab(monkeypatch):
+    monkeypatch.delenv("GITHUB_REPOSITORY", raising=False)
+    monkeypatch.setenv("CI_SERVER_HOST", "gitlab.example.com")
+    monkeypatch.setenv("CI_PROJECT_PATH", "group/sub/repo")
+    assert resolve_repo() == GITLAB_REPO
+
+
+def test_repo_discovery_falls_back_to_placeholder(monkeypatch):
+    monkeypatch.delenv("GITHUB_REPOSITORY", raising=False)
+    monkeypatch.delenv("CI_SERVER_HOST", raising=False)
+    monkeypatch.delenv("CI_PROJECT_PATH", raising=False)
+    with pytest.warns(UserWarning, match="No repository configured"):
+        assert resolve_repo() == Repo("github.com", "OWNER/REPO", "github", "main")
 
 
 def test_skill_discovery(fake_root):
@@ -144,6 +162,27 @@ def test_load_skill_builds_skill_dataclass(fake_root):
     assert skill.source == "https://github.com/owner/repo/tree/main/skills/demo"
 
 
+def test_load_skill_self_hosted_gitlab_sets_gitlab_host(fake_root):
+    skill_dir = create_skill(fake_root, "demo", "name: demo\ndescription: A demo.")
+    skill = load_skill(fake_root, skill_dir, GITLAB_REPO)
+    assert skill.install == (
+        "GITLAB_HOST=gitlab.example.com "
+        "apm install gitlab.example.com/group/sub/repo/skills/demo"
+    )
+    assert (
+        skill.source
+        == "https://gitlab.example.com/group/sub/repo/-/tree/main/skills/demo"
+    )
+
+
+def test_load_skill_gitlab_com_needs_no_gitlab_host(fake_root):
+    skill_dir = create_skill(fake_root, "demo", "name: demo\ndescription: A demo.")
+    repo = Repo(host="gitlab.com", slug="group/repo", platform="gitlab", branch="main")
+    skill = load_skill(fake_root, skill_dir, repo)
+    assert skill.install == "apm install gitlab.com/group/repo/skills/demo"
+    assert skill.source == "https://gitlab.com/group/repo/-/tree/main/skills/demo"
+
+
 def test_build_site_data_builds_site_dataclass(fake_root):
     create_skill(fake_root, "demo1", "name: demo1\ndescription: Last.")
     create_skill(fake_root, "demo2", "name: demo2\ndescription: First.")
@@ -171,6 +210,35 @@ def test_build_pipeline_writes_skills_json(fake_root, monkeypatch):
                 "path": "skills/demo",
                 "install": "apm install github.com/owner/repo/skills/demo",
                 "source": "https://github.com/owner/repo/tree/main/skills/demo",
+            }
+        ],
+    }
+
+
+def test_build_pipeline_writes_skills_json_gitlab(fake_root, monkeypatch):
+    monkeypatch.delenv("GITHUB_REPOSITORY", raising=False)
+    monkeypatch.setenv("CI_SERVER_HOST", "gitlab.example.com")
+    monkeypatch.setenv("CI_PROJECT_PATH", "group/sub/repo")
+    create_skill(fake_root, "demo", "name: demo\ndescription: A demo.")
+    out_file = fake_root / "skills.json"
+
+    repo = resolve_repo()
+    site = build_site.build_site_data(fake_root, repo, fake_root / "skills")
+    build_site.write_skills_json(site, out_file)
+
+    data = json.loads(out_file.read_text(encoding="utf-8"))
+    assert data == {
+        "repoUrl": "https://gitlab.example.com/group/sub/repo",
+        "skills": [
+            {
+                "name": "demo",
+                "description": "A demo.",
+                "path": "skills/demo",
+                "install": (
+                    "GITLAB_HOST=gitlab.example.com "
+                    "apm install gitlab.example.com/group/sub/repo/skills/demo"
+                ),
+                "source": "https://gitlab.example.com/group/sub/repo/-/tree/main/skills/demo",
             }
         ],
     }

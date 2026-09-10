@@ -2,6 +2,8 @@
 
 ## Enable the website
 
+### GitHub
+
 The site is built on every push to `main`, but publishing is off by
 default. Enable one or both options with repository variables
 (Settings > Secrets and variables > Actions > Variables):
@@ -13,15 +15,27 @@ default. Enable one or both options with repository variables
    push to `main` then publishes a GitHub Release with the complete site
    attached as `site.tar.gz`, so you can host the site elsewhere.
 
+### GitLab (self-hosted)
+
+`.gitlab-ci.yml` builds the site on every push to the default branch and
+publishes it with GitLab Pages.
+
+On a self-hosted instance the install commands shown on the site start
+with `GITLAB_HOST=<host>`, because APM only treats a host as GitLab when it
+is `gitlab.com` or named in `GITLAB_HOST` (or `APM_GITLAB_HOSTS`).
+
 ## Environment variables
 
 The CI platform sets the repository variables. For a local build, you must
-set them yourself.
+set them yourself. GitLab needs both of its variables.
 
 | Variable | Function | Default |
 | --- | --- | --- |
 | `GITHUB_REPOSITORY` | GitHub Actions sets it. | none |
 | `DEFAULT_BRANCH_NAME` | Set by the workflow from `github`. | `main` |
+| `CI_PROJECT_PATH` | GitLab CI sets it (`group/project`, subgroups included). | |
+| `CI_SERVER_HOST` | GitLab CI sets it to the instance host. | |
+| `CI_DEFAULT_BRANCH` | GitLab CI sets it. | `main` |
 
 ## Run the build locally
 
@@ -30,6 +44,8 @@ complete deployable directory:
 
 ```sh
 GITHUB_REPOSITORY=<owner>/<repo> DEFAULT_BRANCH_NAME=<branch> uv run scripts/build_site.py
+# or, for a GitLab repository:
+CI_SERVER_HOST=<host> CI_PROJECT_PATH=<group>/<project> CI_DEFAULT_BRANCH=<branch> uv run scripts/build_site.py
 python3 -m http.server -d site 8000
 ```
 

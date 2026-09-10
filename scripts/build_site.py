@@ -12,7 +12,9 @@ Configuration, read from the environment:
   Repository location, taken from what the CI platform provides:
     GITHUB_REPOSITORY (owner/repo)   on GitHub Actions
     DEFAULT_BRANCH_NAME set by the workflow defaults to "main".
-  Set it manually for a local preview.
+    CI_SERVER_HOST + CI_PROJECT_PATH on GitLab CI
+    CI_DEFAULT_BRANCH set by GitLab CI defaults to "main".
+  Set one of them manually for a local preview.
 """
 
 import json
@@ -49,7 +51,7 @@ class Repo:
 
     host: str
     slug: str
-    platform: Literal["github"]
+    platform: Literal["github", "gitlab"]
     branch: str
 
     @property
@@ -58,21 +60,44 @@ class Repo:
 
     @property
     def tree_base(self) -> str:
+        if self.platform == "gitlab":
+            return f"{self.url}/-/tree/{self.branch}"
         return f"{self.url}/tree/{self.branch}"
+
+    def install_command(self, rel_path: str) -> str:
+        command = f"apm install {self.host}/{self.slug}/{rel_path}"
+        if self.platform == "gitlab" and self.host != "gitlab.com":
+            command = f"GITLAB_HOST={self.host} {command}"
+        return command
 
 
 def resolve_repo() -> Repo:
-    if os.environ.get("GITHUB_REPOSITORY"):
+    github_repo = os.environ.get("GITHUB_REPOSITORY")
+    if github_repo:
         return Repo(
             host="github.com",
-            slug=os.environ["GITHUB_REPOSITORY"],
+            slug=github_repo,
             platform="github",
             branch=os.environ.get("DEFAULT_BRANCH_NAME", "main"),
         )
+
+    gitlab_project_path, gitlab_host = (
+        os.environ.get("CI_PROJECT_PATH"),
+        os.environ.get("CI_SERVER_HOST"),
+    )
+    if gitlab_project_path and gitlab_host:
+        return Repo(
+            host=gitlab_host,
+            slug=gitlab_project_path,
+            platform="gitlab",
+            branch=os.environ.get("CI_DEFAULT_BRANCH", "main"),
+        )
+
     warnings.warn(
-        "No repository configured: set GITHUB_REPOSITORY (owner/repo). "
-        "Building with the OWNER/REPO placeholder, so the install commands "
-        "and source links will not work.",
+        "No repository configured: set GITHUB_REPOSITORY (owner/repo) or "
+        "CI_SERVER_HOST and CI_PROJECT_PATH (group/project). Building with "
+        "the OWNER/REPO placeholder, so the install commands and source links "
+        "will not work.",
         stacklevel=2,
     )
     return Repo("github.com", "OWNER/REPO", "github", branch="main")
@@ -131,13 +156,11 @@ def load_skill(root: Path, skill_dir: Path, repo: Repo) -> Skill:
         )
     rel_path = skill_dir.relative_to(root).as_posix()
 
-    install_command = f"apm install {repo.host}/{repo.slug}/{rel_path}"
-
     return Skill(
         name=name,
         description=str(frontmatter["description"]),
         path=rel_path,
-        install=install_command,
+        install=repo.install_command(rel_path),
         source=f"{repo.tree_base}/{rel_path}",
     )
 
