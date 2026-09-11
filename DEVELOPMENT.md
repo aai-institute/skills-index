@@ -20,7 +20,8 @@ set them yourself.
 
 | Variable | Function | Default |
 | --- | --- | --- |
-| `GITHUB_REPOSITORY` | GitHub Actions sets it. |
+| `GITHUB_REPOSITORY` | GitHub Actions sets it. | none |
+| `DEFAULT_BRANCH_NAME` | Set by the workflow from `github`. | `main` |
 
 ## Run the build locally
 
@@ -28,7 +29,7 @@ The script generates `skills.json` into `site/`, which makes `site/` the
 complete deployable directory:
 
 ```sh
-GITHUB_REPOSITORY=<owner>/<repo> uv run scripts/build_site.py
+GITHUB_REPOSITORY=<owner>/<repo> DEFAULT_BRANCH_NAME=<branch> uv run scripts/build_site.py
 python3 -m http.server -d site 8000
 ```
 

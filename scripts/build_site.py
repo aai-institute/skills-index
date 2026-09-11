@@ -11,6 +11,7 @@ declared above automatically.
 Configuration, read from the environment:
   Repository location, taken from what the CI platform provides:
     GITHUB_REPOSITORY (owner/repo)   on GitHub Actions
+    DEFAULT_BRANCH_NAME set by the workflow defaults to "main".
   Set it manually for a local preview.
 """
 
@@ -49,6 +50,7 @@ class Repo:
     host: str
     slug: str
     platform: Literal["github"]
+    branch: str
 
     @property
     def url(self) -> str:
@@ -56,13 +58,16 @@ class Repo:
 
     @property
     def tree_base(self) -> str:
-        return f"{self.url}/tree/main"
+        return f"{self.url}/tree/{self.branch}"
 
 
 def resolve_repo() -> Repo:
     if os.environ.get("GITHUB_REPOSITORY"):
         return Repo(
-            host="github.com", slug=os.environ["GITHUB_REPOSITORY"], platform="github"
+            host="github.com",
+            slug=os.environ["GITHUB_REPOSITORY"],
+            platform="github",
+            branch=os.environ.get("DEFAULT_BRANCH_NAME", "main"),
         )
     warnings.warn(
         "No repository configured: set GITHUB_REPOSITORY (owner/repo). "
@@ -70,7 +75,7 @@ def resolve_repo() -> Repo:
         "and source links will not work.",
         stacklevel=2,
     )
-    return Repo("github.com", "OWNER/REPO", "github")
+    return Repo("github.com", "OWNER/REPO", "github", branch="main")
 
 
 def find_skill_dirs(skills_root: Path) -> List[Path]:

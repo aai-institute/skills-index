@@ -25,7 +25,7 @@ from build_site import (
     resolve_repo,
 )
 
-REPO = Repo(host="github.com", slug="owner/repo", platform="github")
+REPO = Repo(host="github.com", slug="owner/repo", platform="github", branch="main")
 
 
 @pytest.fixture
