@@ -11,6 +11,7 @@ declared above automatically.
 Configuration, read from the environment:
   Repository location, taken from what the CI platform provides:
     GITHUB_REPOSITORY (owner/repo)   on GitHub Actions
+    DEFAULT_BRANCH_NAME set by the workflow defaults to "main".
   Set it manually for a local preview.
 """
 
@@ -49,6 +50,7 @@ class Repo:
     host: str
     slug: str
     platform: Literal["github"]
+    branch: str
 
     @property
     def url(self) -> str:
@@ -56,13 +58,16 @@ class Repo:
 
     @property
     def tree_base(self) -> str:
-        return f"{self.url}/tree/main"
+        return f"{self.url}/tree/{self.branch}"
 
 
 def resolve_repo() -> Repo:
     if os.environ.get("GITHUB_REPOSITORY"):
         return Repo(
-            host="github.com", slug=os.environ["GITHUB_REPOSITORY"], platform="github"
+            host="github.com",
+            slug=os.environ["GITHUB_REPOSITORY"],
+            platform="github",
+            branch=os.environ.get("DEFAULT_BRANCH_NAME", "main"),
         )
     warnings.warn(
         "No repository configured: set GITHUB_REPOSITORY (owner/repo). "
@@ -70,7 +75,7 @@ def resolve_repo() -> Repo:
         "and source links will not work.",
         stacklevel=2,
     )
-    return Repo("github.com", "OWNER/REPO", "github")
+    return Repo("github.com", "OWNER/REPO", "github", branch="main")
 
 
 def find_skill_dirs(skills_root: Path) -> List[Path]:
@@ -83,32 +88,54 @@ def find_skill_dirs(skills_root: Path) -> List[Path]:
 
 
 def parse_frontmatter(text: str) -> dict:
-    """Parses the leading --- delimited frontmatter block of `text` as YAML."""
-    m = re.match(r"^---\r?\n(.*?)\r?\n---\r?\n?", text, re.DOTALL)
-    attrs = yaml.safe_load(m.group(1)) if m else None
-    return attrs if isinstance(attrs, dict) else {}
+    """Parses the leading --- delimited frontmatter block of `text` as YAML.
+
+    Raises ValueError when the block is not valid YAML."""
+    text = text.lstrip("\ufeff")
+    match = re.match(r"^---\r?\n(.*?)\r?\n---\r?\n?", text, re.DOTALL)
+    if not match:
+        return {}
+    try:
+        frontmatter = yaml.safe_load(match.group(1))
+    except yaml.YAMLError as err:
+        raise ValueError(
+            f"invalid YAML in frontmatter: {err}\n"
+            "Hint: wrap the value in double quotes if it contains ': ' or "
+            "starts with a character such as [ { * ` @ | > - or a quote."
+        ) from err
+    return frontmatter if isinstance(frontmatter, dict) else {}
 
 
 def load_skill(root: Path, skill_dir: Path, repo: Repo) -> Skill:
     """One skills.json entry, built from a skill directory's SKILL.md.
 
     The Agent Skills specification requires `name` and `description` in the
-    frontmatter, so a SKILL.md without them fails the build."""
+    frontmatter and requires `name` to match the skill directory name, so a
+    SKILL.md that breaks either rule fails the build."""
 
     skill_md = skill_dir / "SKILL.md"
-    attrs = parse_frontmatter(skill_md.read_text(encoding="utf-8"))
-    missing = [field for field in ("name", "description") if not attrs.get(field)]
+    try:
+        frontmatter = parse_frontmatter(skill_md.read_text(encoding="utf-8"))
+    except ValueError as err:
+        raise ValueError(f"{skill_md.relative_to(root)}: {err}") from err
+    missing = [field for field in ("name", "description") if not frontmatter.get(field)]
     if missing:
         raise ValueError(
             f"{skill_md.relative_to(root)}: skill is missing {' and '.join(missing)}"
+        )
+    name = str(frontmatter["name"])
+    if name != skill_dir.name:
+        raise ValueError(
+            f"{skill_md.relative_to(root)}: name '{name}' must match the "
+            f"directory name '{skill_dir.name}'"
         )
     rel_path = skill_dir.relative_to(root).as_posix()
 
     install_command = f"apm install {repo.host}/{repo.slug}/{rel_path}"
 
     return Skill(
-        name=str(attrs["name"]),
-        description=str(attrs["description"]),
+        name=name,
+        description=str(frontmatter["description"]),
         path=rel_path,
         install=install_command,
         source=f"{repo.tree_base}/{rel_path}",
