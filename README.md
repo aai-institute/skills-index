@@ -12,6 +12,7 @@ and copy the installation command. The install commands use [APM](https://micros
 
 ## Notes
 
+- Skills are grouped on the website by the folder directly under `skills/`, for example `skills/writing/<skill-name>/`. Skills placed directly in `skills/` go into the `Default` group.
 - `SKILL.md` that is in a subfolder of a different skill is skipped.
 - The skill must have a `name` and a `description`.
 

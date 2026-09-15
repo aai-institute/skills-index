@@ -30,6 +30,7 @@ import yaml
 class Skill:
     name: str
     description: str
+    group: str
     path: str
     install: str
     source: str
@@ -106,7 +107,17 @@ def parse_frontmatter(text: str) -> dict:
     return frontmatter if isinstance(frontmatter, dict) else {}
 
 
-def load_skill(root: Path, skill_dir: Path, repo: Repo) -> Skill:
+def skill_group(
+    skills_root: Path, skill_dir: Path, default_group: str = "Default"
+) -> str:
+    """The folder directly under `skills_root` that holds the skill, e.g.
+    `skills/writing/adr-writer` belongs to the group `writing`. Skills placed
+    directly in `skills_root` fall into default_group."""
+    parts = skill_dir.relative_to(skills_root).parts
+    return parts[0] if len(parts) > 1 else default_group
+
+
+def load_skill(root: Path, skill_dir: Path, repo: Repo, skills_root: Path) -> Skill:
     """One skills.json entry, built from a skill directory's SKILL.md.
 
     The Agent Skills specification requires `name` and `description` in the
@@ -136,6 +147,7 @@ def load_skill(root: Path, skill_dir: Path, repo: Repo) -> Skill:
     return Skill(
         name=name,
         description=str(frontmatter["description"]),
+        group=skill_group(skills_root, skill_dir),
         path=rel_path,
         install=install_command,
         source=f"{repo.tree_base}/{rel_path}",
@@ -145,7 +157,8 @@ def load_skill(root: Path, skill_dir: Path, repo: Repo) -> Skill:
 def build_site_data(root: Path, repo: Repo, skills_root: Path) -> Site:
     skill_dirs = find_skill_dirs(skills_root)
     skills = sorted(
-        (load_skill(root, d, repo) for d in skill_dirs), key=lambda s: s.name
+        (load_skill(root, d, repo, skills_root) for d in skill_dirs),
+        key=lambda s: s.name,
     )
 
     return Site(
