@@ -35,6 +35,7 @@ SKIP_FILES = {".DS_Store"}
 class Skill:
     name: str
     description: str
+    group: str
     path: str
     install: str
     source: str
@@ -129,7 +130,17 @@ def package_skill(skill_dir: Path, downloads_dir: Path) -> Path:
     return out_file
 
 
-def load_skill(root: Path, skill_dir: Path, repo: Repo, downloads_dir: Path) -> Skill:
+def skill_group(
+    skills_root: Path, skill_dir: Path, default_group: str = "Default"
+) -> str:
+    """The folder directly under `skills_root` that holds the skill, e.g.
+    `skills/writing/adr-writer` belongs to the group `writing`. Skills placed
+    directly in `skills_root` fall into default_group."""
+    parts = skill_dir.relative_to(skills_root).parts
+    return parts[0] if len(parts) > 1 else default_group
+
+
+def load_skill(root: Path, skill_dir: Path, repo: Repo, downloads_dir: Path, skills_root: Path) -> Skill:
     """One skills.json entry, built from a skill directory's SKILL.md.
 
     The Agent Skills specification requires `name` and `description` in the
@@ -160,6 +171,7 @@ def load_skill(root: Path, skill_dir: Path, repo: Repo, downloads_dir: Path) -> 
     return Skill(
         name=name,
         description=str(frontmatter["description"]),
+        group=skill_group(skills_root, skill_dir),
         path=rel_path,
         install=install_command,
         source=f"{repo.tree_base}/{rel_path}",
@@ -171,7 +183,7 @@ def build_site_data(root: Path, repo: Repo, skills_root: Path, downloads_dir: Pa
     downloads_dir.mkdir(parents=True, exist_ok=True)
     skill_dirs = find_skill_dirs(skills_root)
     skills = sorted(
-        (load_skill(root, d, repo, downloads_dir) for d in skill_dirs),
+        (load_skill(root, d, repo, downloads_dir, skills_root) for d in skill_dirs),
         key=lambda s: s.name,
     )
 
