@@ -100,8 +100,10 @@
     </div>
   </div>
 
+  <div id="groups" class="mb-5 flex flex-wrap gap-2" role="group" aria-label="Filter by group"></div>
+
   <ul id="skills" class="grid list-none items-start gap-4"></ul>
-  <p id="empty" hidden class="rounded-xl border border-dashed border-brand-grey p-10 text-center text-brand-blue dark:border-brand-grey/25 dark:text-brand-grey">No skills match your search.</p>
+  <p id="empty" hidden class="rounded-xl border border-dashed border-brand-grey p-10 text-center text-brand-blue dark:border-brand-grey/25 dark:text-brand-grey">No skills match.</p>
 
 </main>
 
@@ -129,7 +131,7 @@
        2. Copy buttons   -- the Copy/Copied chips next to every command
        3. Target picker  -- the "Install to" select and --target rewriting
        4. Rendering      -- header fields and the skill card list
-       5. Search         -- fuzzy/substring filtering and title highlighting
+       5. Filtering      -- group chips, fuzzy/substring search, title highlighting
        6. init()         -- fetches skills.json and wires everything up   */
 
   // --- 1. Helpers ---
@@ -143,6 +145,8 @@
   const COPY_IDLE = ["border-white/15", "bg-white/5", "text-brand-grey", "hover:border-white/30", "hover:text-white"];
   const COPY_DONE = ["border-brand-green/60", "bg-brand-green/10", "text-brand-green"];
   const MARK = "rounded-[3px] bg-brand-green/70 text-brand-navy dark:bg-brand-green/25 dark:text-brand-green";
+  const CHIP = "cursor-pointer rounded-full border border-brand-grey bg-white px-3 py-1 text-sm transition-colors hover:border-brand-teal/60 aria-pressed:border-brand-navy aria-pressed:bg-brand-navy aria-pressed:text-brand-lightgrey dark:border-brand-grey/20 dark:bg-brand-blue/45 dark:aria-pressed:border-brand-green dark:aria-pressed:bg-brand-green dark:aria-pressed:text-brand-navy";
+  const BADGE = "mb-2 self-start rounded-full border border-brand-teal/40 bg-brand-teal/10 px-2 py-0.5 font-mono text-[0.68rem] tracking-wide uppercase text-brand-blue dark:text-brand-teal";
 
   // --- 2. Copy buttons ---
 
@@ -177,7 +181,7 @@
     { value: "antigravity", label: "Antigravity" },
   ];
 
-  const state = { target: "claude" };
+  const state = { target: "claude", group: "" };
 
   // Rewrites every command on the page for the selected target.
   function applyCommands() {
@@ -210,7 +214,8 @@
   function skillCard(s) {
     return `
       <li class="flex min-w-0 flex-col rounded-xl border border-brand-grey bg-white p-5 transition-colors hover:border-brand-teal/60 dark:border-brand-grey/20 dark:bg-brand-blue/45 dark:hover:border-brand-teal/50"
-          data-name="${esc(s.name)}" data-text="${esc((s.name + " " + s.description).toLowerCase())}">
+          data-name="${esc(s.name)}" data-group="${esc(s.group)}" data-text="${esc((s.name + " " + s.description).toLowerCase())}">
+        <span class="${BADGE}">${esc(s.group)}</span>
         <div class="flex flex-wrap items-baseline gap-3">
           <h3 class="font-mono text-[1.02rem] font-semibold tracking-tight">${esc(s.name)}</h3>
           <a class="ml-auto text-xs font-medium text-brand-indigo hover:underline dark:text-brand-green" href="${esc(s.source)}">Source</a>
@@ -226,6 +231,19 @@
 
   function renderSkillCards(skills) {
     document.getElementById("skills").innerHTML = skills.map(skillCard).join("");
+  }
+
+  function groupChip(label, value, count) {
+    return `<button data-group="${esc(value)}" aria-pressed="${value === state.group}" class="${CHIP}">${esc(label)}
+      <span class="ml-1 font-mono text-xs opacity-70">${count}</span></button>`;
+  }
+
+  function renderGroupChips(skills) {
+    const counts = new Map();
+    for (const s of skills) counts.set(s.group, (counts.get(s.group) || 0) + 1);
+    const groups = [...counts.keys()].sort((a, b) => a.localeCompare(b));
+    document.getElementById("groups").innerHTML =
+      groupChip("All", "", skills.length) + groups.map((g) => groupChip(g, g, counts.get(g))).join("");
   }
 
   // Shows the "Show more" toggle only on cards whose description overflows
@@ -245,7 +263,7 @@
     }).observe(desc);
   }
 
-  // --- 5. Search ---
+  // --- 5. Filtering ---
 
   // Fuzzy search via Fuse.js from a CDN; if it cannot load (offline,
   // blocked CDN), returns null and search falls back to substring filtering.
@@ -309,28 +327,39 @@
     h3.innerHTML = html + esc(name.slice(last));
   }
 
-  function setupSearch(fuse) {
+  // Cards must match both the search query and the selected group chip.
+  function setupFilters(fuse) {
     const list = document.getElementById("skills");
     const count = document.getElementById("count");
     const empty = document.getElementById("empty");
+    const search = document.getElementById("search");
+    const chips = [...document.querySelectorAll("#groups > button")];
     const items = [...list.children];
     const itemByName = new Map(items.map((item) => [item.dataset.name, item]));
 
-    const update = (q) => {
+    const update = () => {
+      const q = search.value.trim();
       const { matched, marks } = matchSkills(q, fuse, items, itemByName);
-      const visible = new Set(matched);
+      const shown = matched.filter((item) => !state.group || item.dataset.group === state.group);
+      const visible = new Set(shown);
       for (const item of items) {
         item.hidden = !visible.has(item);
         setCardTitle(item, marks.get(item));
       }
       list.append(...matched); // best match first; original order when unfiltered
-      count.textContent = q ? `${matched.length} of ${items.length}` : `${items.length}`;
-      empty.hidden = matched.length > 0;
+      count.textContent = q || state.group ? `${shown.length} of ${items.length}` : `${items.length}`;
+      empty.hidden = shown.length > 0;
     };
-    update("");
+    update();
 
-    const search = document.getElementById("search");
-    search.addEventListener("input", (e) => update(e.target.value.trim()));
+    search.addEventListener("input", update);
+    for (const chip of chips) {
+      chip.addEventListener("click", () => {
+        state.group = chip.dataset.group;
+        for (const c of chips) c.ariaPressed = String(c.dataset.group === state.group);
+        update();
+      });
+    }
     document.addEventListener("keydown", (e) => {
       const typing = /^(INPUT|SELECT|TEXTAREA)$/.test(document.activeElement?.tagName || "");
       if (e.key === "/" && !typing && !e.metaKey && !e.ctrlKey && !e.altKey) {
@@ -345,11 +374,12 @@
   async function init() {
     const data = await fetch("./skills.json").then((r) => r.json());
     renderHeader(data);
+    renderGroupChips(data.skills);
     renderSkillCards(data.skills);
     document.querySelectorAll("button[data-copy]").forEach(wireCopy);
     document.querySelectorAll("#skills > li").forEach(wireExpand);
     setupTargetPicker();
-    setupSearch(await loadFuse(data.skills));
+    setupFilters(await loadFuse(data.skills));
   }
 
   init();

@@ -23,6 +23,7 @@ from build_site import (
     load_skill,
     parse_frontmatter,
     resolve_repo,
+    skill_group,
 )
 
 REPO = Repo(host="github.com", slug="owner/repo", platform="github", branch="main")
@@ -98,7 +99,7 @@ def test_parse_frontmatter_accepts_common_authoring_styles(frontmatter, expected
 def test_load_skill_invalid_yaml_names_the_file(fake_root):
     skill_dir = create_skill(fake_root, "demo", "description: Use when: it breaks")
     with pytest.raises(ValueError, match=r"skills/demo/SKILL.md: invalid YAML"):
-        load_skill(fake_root, skill_dir, REPO)
+        load_skill(fake_root, skill_dir, REPO, fake_root / "skills")
 
 
 @pytest.mark.parametrize(
@@ -117,7 +118,7 @@ def test_load_skill_invalid_yaml_names_the_file(fake_root):
 def test_load_skill_name_must_match_directory(fake_root, frontmatter, expected_error):
     skill_dir = create_skill(fake_root, "demo", frontmatter)
     with pytest.raises(ValueError, match=expected_error):
-        load_skill(fake_root, skill_dir, REPO)
+        load_skill(fake_root, skill_dir, REPO, fake_root / "skills")
 
 
 @pytest.mark.parametrize(
@@ -131,17 +132,44 @@ def test_load_skill_name_must_match_directory(fake_root, frontmatter, expected_e
 def test_load_skill_missing_fields_raise(fake_root, frontmatter, expected_error):
     skill_dir = create_skill(fake_root, "demo", frontmatter)
     with pytest.raises(ValueError, match=expected_error):
-        load_skill(fake_root, skill_dir, REPO)
+        load_skill(fake_root, skill_dir, REPO, fake_root / "skills")
 
 
 def test_load_skill_builds_skill_dataclass(fake_root):
     skill_dir = create_skill(fake_root, "demo", "name: demo\ndescription: A demo.")
-    skill = load_skill(fake_root, skill_dir, REPO)
+    skill = load_skill(fake_root, skill_dir, REPO, fake_root / "skills")
     assert skill.name == "demo"
     assert skill.description == "A demo."
+    assert skill.group == "Default"
     assert skill.path == "skills/demo"
     assert skill.install == "apm install github.com/owner/repo/skills/demo"
     assert skill.source == "https://github.com/owner/repo/tree/main/skills/demo"
+
+
+def test_skill_group_for_skill_directly_in_skills_root(fake_root):
+    skills_root = fake_root / "skills"
+    assert skill_group(skills_root, skills_root / "demo") == "Default"
+
+
+def test_skill_group_is_direct_folder_under_skills_root_folder(fake_root):
+    skills_root = fake_root / "skills"
+    assert (
+        skill_group(skills_root, skills_root / "backend" / "code-review") == "backend"
+    )
+    assert (
+        skill_group(skills_root, skills_root / "frontend" / "group" / "review")
+        == "frontend"
+    )
+
+
+def test_load_skill_nested_skill_gets_group_and_path(fake_root):
+    skill_dir = create_skill(
+        fake_root, "writing/review", "name: review\ndescription: d"
+    )
+    skill = load_skill(fake_root, skill_dir, REPO, fake_root / "skills")
+    assert skill.group == "writing"
+    assert skill.path == "skills/writing/review"
+    assert skill.install == "apm install github.com/owner/repo/skills/writing/review"
 
 
 def test_build_site_data_builds_site_dataclass(fake_root):
@@ -168,6 +196,7 @@ def test_build_pipeline_writes_skills_json(fake_root, monkeypatch):
             {
                 "name": "demo",
                 "description": "A demo.",
+                "group": "Default",
                 "path": "skills/demo",
                 "install": "apm install github.com/owner/repo/skills/demo",
                 "source": "https://github.com/owner/repo/tree/main/skills/demo",
