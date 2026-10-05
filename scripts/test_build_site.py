@@ -21,6 +21,7 @@ from build_site import (
     Repo,
     find_skill_dirs,
     load_skill,
+    package_skill,
     parse_frontmatter,
     resolve_repo,
 )
@@ -33,6 +34,14 @@ def fake_root(tmp_path):
     """A temporary repository root with an empty skills folder."""
     (tmp_path / "skills").mkdir()
     return tmp_path
+
+
+@pytest.fixture
+def downloads_dir(tmp_path):
+    """Where packaged .skill files land during a test."""
+    d = tmp_path / "downloads"
+    d.mkdir()
+    return d
 
 
 def create_skill(root: Path, name: str, frontmatter: str) -> Path:
@@ -95,10 +104,10 @@ def test_parse_frontmatter_accepts_common_authoring_styles(frontmatter, expected
     assert attrs["description"] == expected
 
 
-def test_load_skill_invalid_yaml_names_the_file(fake_root):
+def test_load_skill_invalid_yaml_names_the_file(fake_root, downloads_dir):
     skill_dir = create_skill(fake_root, "demo", "description: Use when: it breaks")
     with pytest.raises(ValueError, match=r"skills/demo/SKILL.md: invalid YAML"):
-        load_skill(fake_root, skill_dir, REPO)
+        load_skill(fake_root, skill_dir, REPO, downloads_dir)
 
 
 @pytest.mark.parametrize(
@@ -114,10 +123,10 @@ def test_load_skill_invalid_yaml_names_the_file(fake_root):
         ),
     ],
 )
-def test_load_skill_name_must_match_directory(fake_root, frontmatter, expected_error):
+def test_load_skill_name_must_match_directory(fake_root, downloads_dir, frontmatter, expected_error):
     skill_dir = create_skill(fake_root, "demo", frontmatter)
     with pytest.raises(ValueError, match=expected_error):
-        load_skill(fake_root, skill_dir, REPO)
+        load_skill(fake_root, skill_dir, REPO, downloads_dir)
 
 
 @pytest.mark.parametrize(
@@ -128,37 +137,38 @@ def test_load_skill_name_must_match_directory(fake_root, frontmatter, expected_e
         ("license: MIT", "missing name and description"),
     ],
 )
-def test_load_skill_missing_fields_raise(fake_root, frontmatter, expected_error):
+def test_load_skill_missing_fields_raise(fake_root, downloads_dir, frontmatter, expected_error):
     skill_dir = create_skill(fake_root, "demo", frontmatter)
     with pytest.raises(ValueError, match=expected_error):
-        load_skill(fake_root, skill_dir, REPO)
+        load_skill(fake_root, skill_dir, REPO, downloads_dir)
 
 
-def test_load_skill_builds_skill_dataclass(fake_root):
+def test_load_skill_builds_skill_dataclass(fake_root, downloads_dir):
     skill_dir = create_skill(fake_root, "demo", "name: demo\ndescription: A demo.")
-    skill = load_skill(fake_root, skill_dir, REPO)
+    skill = load_skill(fake_root, skill_dir, REPO, downloads_dir)
     assert skill.name == "demo"
     assert skill.description == "A demo."
     assert skill.path == "skills/demo"
     assert skill.install == "apm install github.com/owner/repo/skills/demo"
     assert skill.source == "https://github.com/owner/repo/tree/main/skills/demo"
+    assert skill.download == "downloads/demo.skill"
 
 
-def test_build_site_data_builds_site_dataclass(fake_root):
+def test_build_site_data_builds_site_dataclass(fake_root, downloads_dir):
     create_skill(fake_root, "demo1", "name: demo1\ndescription: Last.")
     create_skill(fake_root, "demo2", "name: demo2\ndescription: First.")
-    site = build_site.build_site_data(fake_root, REPO, fake_root / "skills")
+    site = build_site.build_site_data(fake_root, REPO, fake_root / "skills", downloads_dir)
     assert site.repoUrl == "https://github.com/owner/repo"
     assert [s.name for s in site.skills] == ["demo1", "demo2"]
 
 
-def test_build_pipeline_writes_skills_json(fake_root, monkeypatch):
+def test_build_pipeline_writes_skills_json(fake_root, downloads_dir, monkeypatch):
     monkeypatch.setenv("GITHUB_REPOSITORY", "owner/repo")
     create_skill(fake_root, "demo", "name: demo\ndescription: A demo.")
     out_file = fake_root / "skills.json"
 
     repo = resolve_repo()
-    site = build_site.build_site_data(fake_root, repo, fake_root / "skills")
+    site = build_site.build_site_data(fake_root, repo, fake_root / "skills", downloads_dir)
     build_site.write_skills_json(site, out_file)
 
     data = json.loads(out_file.read_text(encoding="utf-8"))
@@ -170,10 +180,27 @@ def test_build_pipeline_writes_skills_json(fake_root, monkeypatch):
                 "description": "A demo.",
                 "path": "skills/demo",
                 "install": "apm install github.com/owner/repo/skills/demo",
+                "download": "downloads/demo.skill",
                 "source": "https://github.com/owner/repo/tree/main/skills/demo",
             }
         ],
     }
+
+
+def test_package_skill_zips_files_under_a_name_prefixed_root(fake_root, downloads_dir):
+    skill_dir = create_skill(fake_root, "demo", "name: demo\ndescription: A demo.")
+    (skill_dir / "references").mkdir()
+    (skill_dir / "references" / "probes.md").write_text("probe", encoding="utf-8")
+    (skill_dir / ".DS_Store").write_text("junk", encoding="utf-8")
+
+    out_file = package_skill(skill_dir, downloads_dir)
+
+    assert out_file == downloads_dir / "demo.skill"
+    import zipfile
+
+    with zipfile.ZipFile(out_file) as zf:
+        names = set(zf.namelist())
+    assert names == {"demo/SKILL.md", "demo/references/probes.md"}
 
 
 if __name__ == "__main__":

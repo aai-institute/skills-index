@@ -19,11 +19,16 @@ import json
 import os
 import re
 import warnings
+import zipfile
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import List, Literal
 
 import yaml
+
+# Files that must not end up inside a packaged .skill archive, even though
+# they may exist in a local skill directory (editor/OS cruft).
+SKIP_FILES = {".DS_Store"}
 
 
 @dataclass
@@ -33,6 +38,7 @@ class Skill:
     path: str
     install: str
     source: str
+    download: str
 
 
 @dataclass
@@ -106,7 +112,24 @@ def parse_frontmatter(text: str) -> dict:
     return frontmatter if isinstance(frontmatter, dict) else {}
 
 
-def load_skill(root: Path, skill_dir: Path, repo: Repo) -> Skill:
+def package_skill(skill_dir: Path, downloads_dir: Path) -> Path:
+    """Zips `skill_dir` into `downloads_dir/<name>.skill`.
+
+    A .skill file is a zip archive (Claude Desktop registers the extension
+    as an owned, zip-conforming UTI) whose single top-level entry is a
+    directory named after the skill, mirroring the layout under `skills/`."""
+    name = skill_dir.name
+    out_file = downloads_dir / f"{name}.skill"
+    members = sorted(
+        f for f in skill_dir.rglob("*") if f.is_file() and f.name not in SKIP_FILES
+    )
+    with zipfile.ZipFile(out_file, "w", zipfile.ZIP_DEFLATED) as zf:
+        for member in members:
+            zf.write(member, arcname=Path(name) / member.relative_to(skill_dir))
+    return out_file
+
+
+def load_skill(root: Path, skill_dir: Path, repo: Repo, downloads_dir: Path) -> Skill:
     """One skills.json entry, built from a skill directory's SKILL.md.
 
     The Agent Skills specification requires `name` and `description` in the
@@ -132,6 +155,7 @@ def load_skill(root: Path, skill_dir: Path, repo: Repo) -> Skill:
     rel_path = skill_dir.relative_to(root).as_posix()
 
     install_command = f"apm install {repo.host}/{repo.slug}/{rel_path}"
+    package_skill(skill_dir, downloads_dir)
 
     return Skill(
         name=name,
@@ -139,13 +163,16 @@ def load_skill(root: Path, skill_dir: Path, repo: Repo) -> Skill:
         path=rel_path,
         install=install_command,
         source=f"{repo.tree_base}/{rel_path}",
+        download=f"downloads/{name}.skill",
     )
 
 
-def build_site_data(root: Path, repo: Repo, skills_root: Path) -> Site:
+def build_site_data(root: Path, repo: Repo, skills_root: Path, downloads_dir: Path) -> Site:
+    downloads_dir.mkdir(parents=True, exist_ok=True)
     skill_dirs = find_skill_dirs(skills_root)
     skills = sorted(
-        (load_skill(root, d, repo) for d in skill_dirs), key=lambda s: s.name
+        (load_skill(root, d, repo, downloads_dir) for d in skill_dirs),
+        key=lambda s: s.name,
     )
 
     return Site(
@@ -164,13 +191,17 @@ def main() -> None:
     root = Path(__file__).resolve().parent.parent
     skills_root = root / "skills"
     out_file = root / "site" / "skills.json"
+    downloads_dir = root / "site" / "downloads"
     repo = resolve_repo()
     try:
-        site = build_site_data(root, repo, skills_root)
+        site = build_site_data(root, repo, skills_root, downloads_dir)
     except ValueError as err:
         raise SystemExit(str(err)) from err
     write_skills_json(site, out_file)
-    print(f"Wrote {out_file.name} with {len(site.skills)} skill(s) for {repo.url}")
+    print(
+        f"Wrote {out_file.name} with {len(site.skills)} skill(s) for {repo.url} "
+        f"(packaged {len(site.skills)} .skill file(s) into {downloads_dir.relative_to(root)}/)"
+    )
 
 
 if __name__ == "__main__":

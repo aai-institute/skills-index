@@ -1,2 +1,4 @@
 site/skills.json
+site/downloads/
 .DS_Store
+__pycache__/
