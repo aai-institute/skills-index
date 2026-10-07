@@ -146,7 +146,7 @@
   /* Structure of this script:
        1. Helpers        -- HTML escaping, shared Tailwind class lists
        2. Copy buttons   -- the Copy/Copied chips next to every command
-       3. Target picker  -- the "Install to" select and --target rewriting
+       3. Target picker  -- the "Install to" select, --target rewriting, download visibility
        4. Rendering      -- header fields and the skill card list
        5. Search         -- fuzzy/substring filtering and title highlighting
        6. init()         -- fetches skills.json and wires everything up   */
@@ -199,12 +199,17 @@
 
   const state = { target: "claude" };
 
-  // Rewrites every command on the page for the selected target.
-  function applyCommands() {
+  // Rewrites every command on the page for the selected target, and shows
+  // the .skill download buttons only for Claude (the packaged .skill file
+  // is a Claude Desktop format; other agents install via apm).
+  function applyTarget() {
     for (const code of document.querySelectorAll("code[data-apm]")) {
       let command = code.dataset.apm;
       if (state.target) command += ` --target ${state.target}`;
       code.textContent = command;
+    }
+    for (const link of document.querySelectorAll("a[data-download]")) {
+      link.hidden = state.target !== "claude";
     }
     try { localStorage.setItem("target", state.target); } catch {}
   }
@@ -217,8 +222,8 @@
       if (TARGETS.some((t) => t.value === saved)) state.target = saved;
     } catch {}
     select.value = state.target;
-    applyCommands();
-    select.addEventListener("change", () => { state.target = select.value; applyCommands(); });
+    applyTarget();
+    select.addEventListener("change", () => { state.target = select.value; applyTarget(); });
   }
 
   // --- 4. Rendering ---
@@ -236,7 +241,7 @@
           <div class="ml-auto flex items-center gap-4">
             <a class="text-xs font-medium text-brand-indigo hover:underline dark:text-brand-green" href="${esc(s.source)}">Source</a>
             <a class="inline-flex items-center gap-1.5 rounded-md bg-brand-indigo px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-brand-indigo/90 dark:bg-brand-green dark:text-brand-navy dark:hover:bg-brand-green/90"
-               href="${esc(s.download)}" download="${esc(s.name)}.skill"><span class="${CLAUDE_MARK}" aria-hidden="true"></span>Download for Claude Desktop</a>
+               href="${esc(s.download)}" download="${esc(s.name)}.skill" data-download hidden><span class="${CLAUDE_MARK}" aria-hidden="true"></span>Download for Claude Desktop</a>
           </div>
         </div>
         <p class="mt-1 font-mono text-xs text-brand-blue/70 dark:text-brand-grey/70">${esc(s.path)}</p>
