@@ -46,6 +46,25 @@
       @apply focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-indigo dark:focus-visible:outline-brand-green;
     }
   }
+
+  /* Claude's starburst mark, as a CSS mask so it inherits the button's
+     current text color (white in light mode, navy in dark mode) instead
+     of baking in a fixed color. Source: Claude Desktop's own tray icon. */
+  .claude-mark {
+    display: inline-block;
+    width: 0.95em;
+    height: 0.95em;
+    flex-shrink: 0;
+    background-color: currentColor;
+    -webkit-mask-image: url('./assets/claude-mark.png');
+    mask-image: url('./assets/claude-mark.png');
+    -webkit-mask-size: contain;
+    mask-size: contain;
+    -webkit-mask-repeat: no-repeat;
+    mask-repeat: no-repeat;
+    -webkit-mask-position: center;
+    mask-position: center;
+  }
 </style>
 </head>
 <body class="bg-brand-lightgrey text-brand-navy dark:bg-brand-navy dark:text-brand-lightgrey font-sans leading-relaxed antialiased">
@@ -127,7 +146,7 @@
   /* Structure of this script:
        1. Helpers        -- HTML escaping, shared Tailwind class lists
        2. Copy buttons   -- the Copy/Copied chips next to every command
-       3. Target picker  -- the "Install to" select and --target rewriting
+       3. Target picker  -- the "Install to" select, --target rewriting, download visibility
        4. Rendering      -- header fields and the skill card list
        5. Search         -- fuzzy/substring filtering and title highlighting
        6. init()         -- fetches skills.json and wires everything up   */
@@ -143,6 +162,7 @@
   const COPY_IDLE = ["border-white/15", "bg-white/5", "text-brand-grey", "hover:border-white/30", "hover:text-white"];
   const COPY_DONE = ["border-brand-green/60", "bg-brand-green/10", "text-brand-green"];
   const MARK = "rounded-[3px] bg-brand-green/70 text-brand-navy dark:bg-brand-green/25 dark:text-brand-green";
+  const CLAUDE_MARK = "claude-mark";
 
   // --- 2. Copy buttons ---
 
@@ -179,12 +199,17 @@
 
   const state = { target: "claude" };
 
-  // Rewrites every command on the page for the selected target.
-  function applyCommands() {
+  // Rewrites every command on the page for the selected target, and shows
+  // the .skill download buttons only for Claude (the packaged .skill file
+  // is a Claude Desktop format; other agents install via apm).
+  function applyTarget() {
     for (const code of document.querySelectorAll("code[data-apm]")) {
       let command = code.dataset.apm;
       if (state.target) command += ` --target ${state.target}`;
       code.textContent = command;
+    }
+    for (const link of document.querySelectorAll("a[data-download]")) {
+      link.hidden = state.target !== "claude";
     }
     try { localStorage.setItem("target", state.target); } catch {}
   }
@@ -197,8 +222,8 @@
       if (TARGETS.some((t) => t.value === saved)) state.target = saved;
     } catch {}
     select.value = state.target;
-    applyCommands();
-    select.addEventListener("change", () => { state.target = select.value; applyCommands(); });
+    applyTarget();
+    select.addEventListener("change", () => { state.target = select.value; applyTarget(); });
   }
 
   // --- 4. Rendering ---
@@ -211,9 +236,13 @@
     return `
       <li class="flex min-w-0 flex-col rounded-xl border border-brand-grey bg-white p-5 transition-colors hover:border-brand-teal/60 dark:border-brand-grey/20 dark:bg-brand-blue/45 dark:hover:border-brand-teal/50"
           data-name="${esc(s.name)}" data-text="${esc((s.name + " " + s.description).toLowerCase())}">
-        <div class="flex flex-wrap items-baseline gap-3">
+        <div class="flex flex-wrap items-center gap-3">
           <h3 class="font-mono text-[1.02rem] font-semibold tracking-tight">${esc(s.name)}</h3>
-          <a class="ml-auto text-xs font-medium text-brand-indigo hover:underline dark:text-brand-green" href="${esc(s.source)}">Source</a>
+          <div class="ml-auto flex items-center gap-4">
+            <a class="text-xs font-medium text-brand-indigo hover:underline dark:text-brand-green" href="${esc(s.source)}">Source</a>
+            <a class="inline-flex items-center gap-1.5 rounded-md bg-brand-indigo px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-brand-indigo/90 dark:bg-brand-green dark:text-brand-navy dark:hover:bg-brand-green/90"
+               href="${esc(s.download)}" download="${esc(s.name)}.skill" data-download hidden><span class="${CLAUDE_MARK}" aria-hidden="true"></span>Download for Claude Desktop</a>
+          </div>
         </div>
         <p class="mt-1 font-mono text-xs text-brand-blue/70 dark:text-brand-grey/70">${esc(s.path)}</p>
         <div class="mt-2 mb-4 flex-1">
