@@ -113,14 +113,14 @@ def parse_frontmatter(text: str) -> dict:
     return frontmatter if isinstance(frontmatter, dict) else {}
 
 
-def package_skill(skill_dir: Path, downloads_dir: Path) -> Path:
-    """Zips `skill_dir` into `downloads_dir/<name>.skill`.
+def package_skill(skill_dir: Path, out_file: Path) -> Path:
+    """Zips `skill_dir` into `out_file`.
 
     A .skill file is a zip archive (Claude Desktop registers the extension
     as an owned, zip-conforming UTI) whose single top-level entry is a
     directory named after the skill, mirroring the layout under `skills/`."""
     name = skill_dir.name
-    out_file = downloads_dir / f"{name}.skill"
+    out_file.parent.mkdir(parents=True, exist_ok=True)
     members = sorted(
         f for f in skill_dir.rglob("*") if f.is_file() and f.name not in SKIP_FILES
     )
@@ -142,6 +142,10 @@ def skill_group(
 
 def load_skill(root: Path, skill_dir: Path, repo: Repo, downloads_dir: Path, skills_root: Path) -> Skill:
     """One skills.json entry, built from a skill directory's SKILL.md.
+
+    The packaged .skill file mirrors the skill's location under `skills_root`, so
+    skills that share a name in different folders (e.g. backend/code-review
+    and frontend/code-review) do not overwrite each other's download.
 
     The Agent Skills specification requires `name` and `description` in the
     frontmatter and requires `name` to match the skill directory name, so a
@@ -166,7 +170,8 @@ def load_skill(root: Path, skill_dir: Path, repo: Repo, downloads_dir: Path, ski
     rel_path = skill_dir.relative_to(root).as_posix()
 
     install_command = f"apm install {repo.host}/{repo.slug}/{rel_path}"
-    package_skill(skill_dir, downloads_dir)
+    download_path = f"{skill_dir.relative_to(skills_root).as_posix()}.skill"
+    package_skill(skill_dir, downloads_dir / download_path)
 
     return Skill(
         name=name,
@@ -175,16 +180,18 @@ def load_skill(root: Path, skill_dir: Path, repo: Repo, downloads_dir: Path, ski
         path=rel_path,
         install=install_command,
         source=f"{repo.tree_base}/{rel_path}",
-        download=f"downloads/{name}.skill",
+        download=f"downloads/{download_path}",
     )
 
 
-def build_site_data(root: Path, repo: Repo, skills_root: Path, downloads_dir: Path) -> Site:
+def build_site_data(
+    root: Path, repo: Repo, skills_root: Path, downloads_dir: Path
+) -> Site:
     downloads_dir.mkdir(parents=True, exist_ok=True)
     skill_dirs = find_skill_dirs(skills_root)
     skills = sorted(
         (load_skill(root, d, repo, downloads_dir, skills_root) for d in skill_dirs),
-        key=lambda s: s.name,
+        key=lambda s: (s.name, s.path),
     )
 
     return Site(

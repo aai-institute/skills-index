@@ -239,7 +239,7 @@
   function skillCard(s) {
     return `
       <li class="flex min-w-0 flex-col rounded-xl border border-brand-grey bg-white p-5 transition-colors hover:border-brand-teal/60 dark:border-brand-grey/20 dark:bg-brand-blue/45 dark:hover:border-brand-teal/50"
-          data-name="${esc(s.name)}" data-group="${esc(s.group)}" data-text="${esc((s.name + " " + s.description).toLowerCase())}">
+          data-name="${esc(s.name)}" data-group="${esc(s.group)}" data-path="${esc(s.path)}" data-text="${esc((s.name + " " + s.description).toLowerCase())}">
         <span class="${BADGE}">${esc(s.group)}</span>
         <div class="flex flex-wrap items-center gap-3">
           <h3 class="font-mono text-[1.02rem] font-semibold tracking-tight">${esc(s.name)}</h3>
@@ -315,13 +315,13 @@
 
   // Returns { matched, marks }: the matching card elements in relevance
   // order, plus a per-card list of title character ranges to highlight.
-  function matchSkills(q, fuse, items, itemByName) {
+  function matchSkills(q, fuse, items, itemByPath) {
     const marks = new Map();
     if (!q) return { matched: items, marks };
     if (fuse) {
       const matched = [];
       for (const result of fuse.search(q)) {
-        const item = itemByName.get(result.item.name);
+        const item = itemByPath.get(result.item.path);
         matched.push(item);
         const nameMatch = (result.matches || []).find((m) => m.key === "name");
         // Fuzzy matching also reports stray single-character runs; only
@@ -364,11 +364,11 @@
     const search = document.getElementById("search");
     const chips = [...document.querySelectorAll("#groups > button")];
     const items = [...list.children];
-    const itemByName = new Map(items.map((item) => [item.dataset.name, item]));
+    const itemByPath = new Map(items.map((item) => [item.dataset.path, item]));
 
     const update = () => {
       const q = search.value.trim();
-      const { matched, marks } = matchSkills(q, fuse, items, itemByName);
+      const { matched, marks } = matchSkills(q, fuse, items, itemByPath);
       const shown = matched.filter((item) => !state.group || item.dataset.group === state.group);
       const visible = new Set(shown);
       for (const item of items) {
