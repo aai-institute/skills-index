@@ -14,6 +14,8 @@ from pathlib import Path
 
 import pytest
 
+import zipfile
+
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import build_site
@@ -24,6 +26,7 @@ from build_site import (
     package_skill,
     parse_frontmatter,
     resolve_repo,
+    skill_group,
 )
 
 REPO = Repo(host="github.com", slug="owner/repo", platform="github", branch="main")
@@ -107,7 +110,7 @@ def test_parse_frontmatter_accepts_common_authoring_styles(frontmatter, expected
 def test_load_skill_invalid_yaml_names_the_file(fake_root, downloads_dir):
     skill_dir = create_skill(fake_root, "demo", "description: Use when: it breaks")
     with pytest.raises(ValueError, match=r"skills/demo/SKILL.md: invalid YAML"):
-        load_skill(fake_root, skill_dir, REPO, downloads_dir)
+        load_skill(fake_root, skill_dir, REPO, downloads_dir, fake_root / "skills")
 
 
 @pytest.mark.parametrize(
@@ -123,10 +126,12 @@ def test_load_skill_invalid_yaml_names_the_file(fake_root, downloads_dir):
         ),
     ],
 )
-def test_load_skill_name_must_match_directory(fake_root, downloads_dir, frontmatter, expected_error):
+def test_load_skill_name_must_match_directory(
+    fake_root, downloads_dir, frontmatter, expected_error
+):
     skill_dir = create_skill(fake_root, "demo", frontmatter)
     with pytest.raises(ValueError, match=expected_error):
-        load_skill(fake_root, skill_dir, REPO, downloads_dir)
+        load_skill(fake_root, skill_dir, REPO, downloads_dir, fake_root / "skills")
 
 
 @pytest.mark.parametrize(
@@ -137,27 +142,58 @@ def test_load_skill_name_must_match_directory(fake_root, downloads_dir, frontmat
         ("license: MIT", "missing name and description"),
     ],
 )
-def test_load_skill_missing_fields_raise(fake_root, downloads_dir, frontmatter, expected_error):
+def test_load_skill_missing_fields_raise(
+    fake_root, downloads_dir, frontmatter, expected_error
+):
     skill_dir = create_skill(fake_root, "demo", frontmatter)
     with pytest.raises(ValueError, match=expected_error):
-        load_skill(fake_root, skill_dir, REPO, downloads_dir)
+        load_skill(fake_root, skill_dir, REPO, downloads_dir, fake_root / "skills")
 
 
 def test_load_skill_builds_skill_dataclass(fake_root, downloads_dir):
     skill_dir = create_skill(fake_root, "demo", "name: demo\ndescription: A demo.")
-    skill = load_skill(fake_root, skill_dir, REPO, downloads_dir)
+    skill = load_skill(fake_root, skill_dir, REPO, downloads_dir, fake_root / "skills")
     assert skill.name == "demo"
     assert skill.description == "A demo."
+    assert skill.group == "Default"
     assert skill.path == "skills/demo"
     assert skill.install == "apm install github.com/owner/repo/skills/demo"
     assert skill.source == "https://github.com/owner/repo/tree/main/skills/demo"
     assert skill.download == "downloads/demo.skill"
 
 
+def test_skill_group_for_skill_directly_in_skills_root(fake_root):
+    skills_root = fake_root / "skills"
+    assert skill_group(skills_root, skills_root / "demo") == "Default"
+
+
+def test_skill_group_is_direct_folder_under_skills_root_folder(fake_root):
+    skills_root = fake_root / "skills"
+    assert (
+        skill_group(skills_root, skills_root / "backend" / "code-review") == "backend"
+    )
+    assert (
+        skill_group(skills_root, skills_root / "frontend" / "group" / "review")
+        == "frontend"
+    )
+
+
+def test_load_skill_nested_skill_gets_group_and_path(fake_root, downloads_dir):
+    skill_dir = create_skill(
+        fake_root, "writing/review", "name: review\ndescription: d"
+    )
+    skill = load_skill(fake_root, skill_dir, REPO, downloads_dir, fake_root / "skills")
+    assert skill.group == "writing"
+    assert skill.path == "skills/writing/review"
+    assert skill.install == "apm install github.com/owner/repo/skills/writing/review"
+
+
 def test_build_site_data_builds_site_dataclass(fake_root, downloads_dir):
     create_skill(fake_root, "demo1", "name: demo1\ndescription: Last.")
     create_skill(fake_root, "demo2", "name: demo2\ndescription: First.")
-    site = build_site.build_site_data(fake_root, REPO, fake_root / "skills", downloads_dir)
+    site = build_site.build_site_data(
+        fake_root, REPO, fake_root / "skills", downloads_dir
+    )
     assert site.repoUrl == "https://github.com/owner/repo"
     assert [s.name for s in site.skills] == ["demo1", "demo2"]
 
@@ -168,7 +204,9 @@ def test_build_pipeline_writes_skills_json(fake_root, downloads_dir, monkeypatch
     out_file = fake_root / "skills.json"
 
     repo = resolve_repo()
-    site = build_site.build_site_data(fake_root, repo, fake_root / "skills", downloads_dir)
+    site = build_site.build_site_data(
+        fake_root, repo, fake_root / "skills", downloads_dir
+    )
     build_site.write_skills_json(site, out_file)
 
     data = json.loads(out_file.read_text(encoding="utf-8"))
@@ -178,6 +216,7 @@ def test_build_pipeline_writes_skills_json(fake_root, downloads_dir, monkeypatch
             {
                 "name": "demo",
                 "description": "A demo.",
+                "group": "Default",
                 "path": "skills/demo",
                 "install": "apm install github.com/owner/repo/skills/demo",
                 "download": "downloads/demo.skill",
@@ -193,14 +232,39 @@ def test_package_skill_zips_files_under_a_name_prefixed_root(fake_root, download
     (skill_dir / "references" / "probes.md").write_text("probe", encoding="utf-8")
     (skill_dir / ".DS_Store").write_text("junk", encoding="utf-8")
 
-    out_file = package_skill(skill_dir, downloads_dir)
+    out_file = package_skill(skill_dir, downloads_dir / "demo.skill")
 
     assert out_file == downloads_dir / "demo.skill"
-    import zipfile
 
     with zipfile.ZipFile(out_file) as zf:
         names = set(zf.namelist())
     assert names == {"demo/SKILL.md", "demo/references/probes.md"}
+
+
+def test_same_named_skills_in_different_folders_get_separate_downloads(
+    fake_root, downloads_dir
+):
+    create_skill(
+        fake_root, "backend/code-review", "name: code-review\ndescription: Backend."
+    )
+    create_skill(
+        fake_root, "frontend/code-review", "name: code-review\ndescription: Frontend."
+    )
+
+    site = build_site.build_site_data(
+        fake_root, REPO, fake_root / "skills", downloads_dir
+    )
+
+    assert [(s.path, s.download) for s in site.skills] == [
+        ("skills/backend/code-review", "downloads/backend/code-review.skill"),
+        ("skills/frontend/code-review", "downloads/frontend/code-review.skill"),
+    ]
+
+    for folder in ("backend", "frontend"):
+        with zipfile.ZipFile(downloads_dir / folder / "code-review.skill") as zf:
+            assert zf.namelist() == ["code-review/SKILL.md"]
+            body = zf.read("code-review/SKILL.md").decode()
+        assert folder.capitalize() in body
 
 
 if __name__ == "__main__":
