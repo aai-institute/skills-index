@@ -20,7 +20,7 @@ seen it in this session.
 
 ### 1. Prepare
 
-- Read the metric. Read all files listed in `references`.
+- Read the metric. Read all files listed in `references`. Their paths are relative to the metric file.
 - Get the artifact into a form you can read. Text formats (md, txt, html, tex, code) can be read directly. For `.pptx`, `.docx` or `.pdf`, use the matching document skill if one is available, or extract the text (for example with `markitdown` or `pandoc`). Note the slide or page numbers so that evidence can point to them.
 
 ### 2. Measure each term
@@ -46,18 +46,23 @@ JSON `{"score": ..., "evidence": "...", "suggestion": "..."}`. Run these
 subagents in parallel. This keeps judgements independent. The `make-it-better`
 skill uses this mode so that the judge never sees why an edit was made.
 
-### 3. Check gates
+### 3. Check gates and caps
 
-For each gate, decide pass or fail and give evidence.
+For each gate and each cap, decide pass or fail and give evidence. A failed
+gate makes the artifact unacceptable. A failed cap limits the total to its
+`max_total`; the helper script applies it.
 
 ### 4. Aggregate
 
 Write the results to `<artifact-stem>.scores.json`, next to the artifact or in
-a `scorecards/` folder (see the format reference). Then run the helper script
-that ships in this skill's `scripts/` folder:
+a `scorecards/` folder (see the format reference). Then run the helper script.
+It ships in this skill's `scripts/` folder. When this skill loads, its text starts
+with a line `Base directory for this skill: <dir>`. The script is at
+`<dir>/scripts/metrictool.py`. Build the absolute path from that line,
+not from the current directory:
 
 ```bash
-uv run <skill-dir>/scripts/metrictool.py aggregate <metric.yaml> <scores.json> --out <artifact-stem>.scorecard.json --markdown
+uv run "<dir>/scripts/metrictool.py" aggregate <metric.yaml> <scores.json> --out <artifact-stem>.scorecard.json --markdown
 ```
 
 Do not compute the total by hand. If the script is not available, compute
@@ -67,7 +72,7 @@ Do not compute the total by hand. If the script is not available, compute
 
 Present the score card. Lead with the verdict:
 
-1. **Total** (two decimals) and **gate status**. If a gate failed, say clearly that the artifact is not acceptable, whatever the total.
+1. **Total** (two decimals) and **gate status**. If a cap limited the total, say which one and give the uncapped total. If a gate failed, or the total is below the metric's `accept_threshold`, say clearly that the artifact is not acceptable.
 2. **Table**: term, weight, score, a one-line reason.
 3. **Biggest levers**: the 2–3 terms with the largest `headroom` (`weight · (1 − score)`), each with its concrete suggestion. These are the changes that raise the total most.
 4. **Evidence** for low scores, with quotes and locations.

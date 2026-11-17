@@ -7,7 +7,7 @@ Never edit the artifact or the metric while you score.
 
 ## 1. Prepare
 
-- Read the metric. Read all files listed in `references`.
+- Read the metric. Read all files listed in `references`. Their paths are relative to the metric file.
 - Get the artifact into a form you can read. Text formats (md, txt, html, tex, code) can be read directly. For `.pptx`, `.docx` or `.pdf`, use the matching document skill if one is available, or extract the text (for example with `markitdown` or `pandoc`). Note the slide or page numbers so that evidence can point to them.
 
 ## 2. Measure each term
@@ -33,19 +33,24 @@ JSON `{"score": ..., "evidence": "...", "suggestion": "..."}`. Run these
 subagents in parallel. This keeps judgements independent, and the judge never
 sees why an edit was made.
 
-## 3. Check gates
+## 3. Check gates and caps
 
-For each gate, decide pass or fail and give evidence.
+For each gate and each cap, decide pass or fail and give evidence. A failed
+gate makes the artifact unacceptable. A failed cap limits the total to its
+`max_total`; the helper script applies it.
 
 ## 4. Aggregate
 
-Write the results to `<artifact-stem>.scores.json` (see `metric-format.md`).
-Then run the helper script that ships in this skill's `scripts/` folder:
+Write the results to `<artifact-stem>.scores.json`, next to the artifact or in
+a `scorecards/` folder (see `metric-format.md`). Then run the helper script.
+It ships in this skill's `scripts/` folder. When this skill loads, its text starts
+with a line `Base directory for this skill: <dir>`. The script is at
+`<dir>/scripts/metrictool.py`. Build the absolute path from that line,
+not from the current directory:
 
 ```bash
-uv run <skill-dir>/scripts/metrictool.py aggregate <metric.yaml> <scores.json> --out <artifact-stem>.scorecard.json --markdown
+uv run "<dir>/scripts/metrictool.py" aggregate <metric.yaml> <scores.json> --out <artifact-stem>.scorecard.json --markdown
 ```
 
-`<skill-dir>` is the folder that contains this skill's `SKILL.md`. Do not
-compute the total by hand. If the script is not available, compute
+Do not compute the total by hand. If the script is not available, compute
 `Σ weight · score` and say that you calculated it manually.

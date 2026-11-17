@@ -51,7 +51,8 @@ Then repeat until a stop condition holds:
 
 **1. Choose a lever.** Take the term with the largest headroom
 `weight · (1 − score)` that you have not just failed on. If a gate fails, fix
-the gate first. If the lever needs information that only the user has (for
+the gate first. If a cap limits the total, fixing that cap is usually the
+biggest lever. If the lever needs information that only the user has (for
 example missing learning objectives, or facts you cannot verify), do not
 invent it. Add it to the "needs the author" list and choose the next lever.
 
